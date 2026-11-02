@@ -8,6 +8,7 @@ const Sports = require('./shared/sports');
 const Engine = require('./shared/engine');
 const { makeStats } = require('./lib/stats');
 const Pins = require('./lib/pins');
+const { makeReconcile } = require('./lib/reconcile');
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_PIN = process.env.ADMIN_PIN || '';   // athletic director / league admin: corrections after final, dispute resolution
@@ -109,6 +110,7 @@ function publicGame(g) {
     date: g.game_date ? g.game_date.toISOString().slice(0, 10) : null,
     version: g.version, created_at: g.created_at, finalized_at: g.finalized_at,
     home_team_id: g.home_team_id, away_team_id: g.away_team_id,
+    book_team_id: g.book_team_id || null, paired: !!g.pair_id,
   };
 }
 
@@ -426,9 +428,25 @@ app.post('/api/games', rateLimit('create', 30, 3600 * 1000), wrap(async (req, re
       if (!clash.rows.length) break;
       if (i === 7) throw httpErr(500, 'Could not allocate a game code. Try again.');
     }
+    // Two books: `book` says whose book this is ('home' | 'away'); `pair_with` joins the opponent's book of the same game.
+    let bookTeamId = null, pairId = null;
+    if (b.pair_with) {
+      const other = await loadGameRow(client, b.pair_with);
+      if (!other || !other.pair_id || !other.book_team_id) throw httpErr(404, 'That game is not open for a second book.');
+      const sameTeams = [other.home_team_id, other.away_team_id].sort().join() === [home.id, away.id].sort().join();
+      if (other.sport !== sport.id || !sameTeams) throw httpErr(400, 'The second book must be for the same two teams and sport.');
+      const mine = b.book === 'home' ? home.id : b.book === 'away' ? away.id : other.book_team_id === home.id ? away.id : home.id;
+      const taken = await client.query('SELECT 1 FROM games WHERE pair_id = $1 AND book_team_id = $2', [other.pair_id, mine]);
+      if (taken.rows.length || mine === other.book_team_id) throw httpErr(409, 'That team has already kept a book of this game.');
+      bookTeamId = mine; pairId = other.pair_id;
+    } else if (b.book === 'home' || b.book === 'away') {
+      bookTeamId = b.book === 'home' ? home.id : away.id;
+      pairId = (await client.query('INSERT INTO game_pairs DEFAULT VALUES RETURNING id')).rows[0].id;
+    }
+    // Only the team that owns a book (or an admin) may start it, so a school PIN guards its own book.
     const ins = await client.query(
-      `INSERT INTO games (code, sport, format, home_team_id, away_team_id, level, game_date, keeper_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, [code, sport.id, format || sport.formatId || '', home.id, away.id, level, date, key]);
+      `INSERT INTO games (code, sport, format, home_team_id, away_team_id, level, game_date, keeper_key, book_team_id, pair_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [code, sport.id, format || sport.formatId || '', home.id, away.id, level, date, key, bookTeamId, pairId]);
     const gameId = ins.rows[0].id;
     for (const [teamId, roster] of [[home.id, homeRoster], [away.id, awayRoster]]) {
       for (const p of roster) {
@@ -436,9 +454,9 @@ app.post('/api/games', rateLimit('create', 30, 3600 * 1000), wrap(async (req, re
         await client.query('INSERT INTO game_players (game_id, player_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [gameId, row.id]);
       }
     }
-    await audit(client, gameId, 'game_created', 'keeper', { sport: sport.id, format: format || sport.formatId || '', home: home.name, away: away.name, authorized_by: authorizedBy, home_players: homeRoster.length, away_players: awayRoster.length });
+    await audit(client, gameId, 'game_created', 'keeper', { sport: sport.id, format: format || sport.formatId || '', home: home.name, away: away.name, authorized_by: authorizedBy, home_players: homeRoster.length, away_players: awayRoster.length, book_team_id: bookTeamId, pair_id: pairId });
     await client.query('COMMIT');
-    res.status(201).json({ code, keeperKey: key, publicUrl: `/g/${code}`, keeperUrl: `/k/${code}?key=${key}` });
+    res.status(201).json({ code, keeperKey: key, publicUrl: `/g/${code}`, keeperUrl: `/k/${code}?key=${key}`, ...(pairId ? { pairCode: code, book_team_id: bookTeamId } : {}) });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -638,6 +656,8 @@ app.post('/api/games/:code/finalize', wrap(async (req, res) => {
       scoreboard_checks: checks.map((c) => ({ period: c.period, match: c.match })),
       warnings: computed.warnings,
     });
+    const started = await reconcile.markCompared(db, g);
+    if (started) await audit(db, g.id, 'books_compared', 'system', { review_hours: Number(process.env.REVIEW_HOURS) > 0 ? Number(process.env.REVIEW_HOURS) : 48 });
     return { status: 'final' };
   });
   res.json(out);
@@ -650,6 +670,7 @@ app.post('/api/games/:code/reopen', wrap(async (req, res) => {
     const reason = String((req.body && req.body.reason) || '').trim().slice(0, 200);
     if (!reason) throw httpErr(400, 'A reason is required to reopen a final game.');
     if (g.status !== 'final') return { status: g.status, mutated: false };
+    if (await reconcile.windowClosed(db, g)) throw httpErr(423, 'The review window for this game has closed. Each team keeps its own book.');
     await db.query(`UPDATE games SET status = 'live', finalized_at = NULL WHERE id = $1`, [g.id]);
     await audit(db, g.id, 'game_reopened', 'admin', { reason });
     return { status: 'live' };
@@ -690,8 +711,33 @@ app.post('/api/games/:code/disputes/:id/resolve', wrap(async (req, res) => {
   res.json(out);
 }));
 
+/* ---- two books: compare, and say "ours stands" ---- */
+app.get('/api/games/:code/reconcile', wrap(async (req, res) => {
+  const g = await loadGameRow(pool, req.params.code);
+  if (!g) throw httpErr(404, 'Game not found.');
+  res.set('Cache-Control', 'no-store');
+  res.json(await reconcile.view(pool, g));
+}));
+
+app.post('/api/games/:code/reconcile/stand', wrap(async (req, res) => {
+  const out = await withGame(req.params.code, async (db, g) => {
+    if (!roleOf(req, g)) throw httpErr(401, 'Stat-keeper key required.');
+    if (!g.pair_id) throw httpErr(400, 'This game has only one book.');
+    const v = await reconcile.view(db, g);
+    if (v.state !== 'in_review' && v.state !== 'settled') throw httpErr(409, 'There is nothing to review yet.');
+    const line = v.lines.find((l) => l.key === String((req.body && req.body.line) || ''));
+    if (!line) throw httpErr(404, 'That line is not in the comparison.');
+    await db.query('INSERT INTO reconcile_stands (pair_id, team_id, line_key) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [g.pair_id, g.book_team_id, line.key]);
+    await audit(db, g.id, 'line_stands', 'keeper', { line: line.key, mine: line.mine, theirs: line.theirs });
+    return { line: line.key };
+  });
+  res.json(out);
+}));
+
 /* ---- season totals and leaderboards (public; final games only) ---- */
-const stats = makeStats({ pool, loadParts });
+let reconcile;
+const stats = makeStats({ pool, loadParts, getFlags: (sums) => reconcile.flagsFor(sums) });
+reconcile = makeReconcile({ pool, stats });
 const seasonQ = (v) => (/^\d{4}-\d{2}$/.test(String(v || '')) ? String(v) : '');
 const levelQ = (v) => String(v || '').trim().slice(0, 30);
 

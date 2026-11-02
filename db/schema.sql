@@ -141,3 +141,24 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS audit_game_idx ON audit_log (game_id, id);
+
+-- v3: two books. Each team may keep its OWN book of a game (its own game row, keeper key and event log). The two
+-- games are linked by a pair. Books are compared automatically once both are final, and the teams then have a
+-- fixed review window (48h by default) to fix their own book. After that, any line that still differs keeps each
+-- team's own number and is shown as a noted discrepancy. Nothing is merged and neither book is ever overwritten.
+CREATE TABLE IF NOT EXISTS game_pairs (
+  id           SERIAL PRIMARY KEY,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  compared_at  TIMESTAMPTZ                    -- set once, when both books first become final; the window runs from here
+);
+ALTER TABLE games ADD COLUMN IF NOT EXISTS book_team_id INT REFERENCES teams(id);   -- whose book this is (NULL = a shared, single-book game)
+ALTER TABLE games ADD COLUMN IF NOT EXISTS pair_id INT REFERENCES game_pairs(id);
+CREATE UNIQUE INDEX IF NOT EXISTS games_pair_book_idx ON games (pair_id, book_team_id) WHERE pair_id IS NOT NULL;
+-- A team can say "ours stands" about one differing line. When both teams do, the line is disputed before the window ends.
+CREATE TABLE IF NOT EXISTS reconcile_stands (
+  pair_id     INT  NOT NULL REFERENCES game_pairs(id) ON DELETE CASCADE,
+  team_id     INT  NOT NULL REFERENCES teams(id),
+  line_key    TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (pair_id, team_id, line_key)
+);

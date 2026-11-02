@@ -497,4 +497,64 @@ if (!URL_) {
     assert.equal((await j('DELETE', `/api/schools/${lost}`, { confirmName: 'nope' }, ADMIN)).status, 400);
     assert.equal((await j('DELETE', `/api/schools/${lost}`, { confirmName: 'Lost Pin Academy' }, ADMIN)).status, 200);
   });
+
+  test('two books: pair, compare, review window, own-book leaderboards', async () => {
+    const mk = (body, headers) => j('POST', '/api/games', { sport: 'basketball', level: 'Varsity', date: '2026-10-25', ...body }, headers);
+    const rosterH = '4 Lee\n23 Johnson', rosterA = '3 Ray\n15 Moss';
+    const a = await mk({ home: { name: 'Twin Home', roster: rosterH }, away: { name: 'Twin Away', roster: rosterA }, book: 'home' });
+    assert.equal(a.status, 201);
+    const b = await mk({ home: { name: 'Twin Home', roster: rosterH }, away: { name: 'Twin Away', roster: rosterA }, pair_with: a.data.code });
+    assert.equal(b.status, 201);
+    assert.equal((await mk({ home: { name: 'Twin Home', roster: rosterH }, away: { name: 'Twin Away', roster: rosterA }, pair_with: a.data.code })).status, 409); // third book
+    assert.equal((await mk({ home: { name: 'Other', roster: '1 X' }, away: { name: 'Twin Away', roster: rosterA }, pair_with: a.data.code })).status, 400);       // wrong teams
+    assert.equal((await j('GET', `/api/games/${a.data.code}/reconcile`)).data.state, 'waiting');
+
+    const score = async (g, keeperKey, plays) => {
+      const ids = (await j('GET', `/api/games/${g}`)).data.players;
+      const by = (jersey, team) => ids.find((x) => x.jersey === jersey && x.team_id === team).id;
+      const t = (await j('GET', `/api/games/${g}`)).data.teams;
+      const home = t[0].id, away = t[1].id;
+      for (const [jersey, teamIdx, type] of plays) {
+        const r = await j('POST', `/api/games/${g}/events`, { client_id: cid(), type, team_id: teamIdx ? away : home, player_id: by(jersey, teamIdx ? away : home), period: 1 }, { 'x-keeper-key': keeperKey });
+        assert.equal(r.status, 201, JSON.stringify(r.data));
+      }
+      assert.equal((await j('POST', `/api/games/${g}/finalize`, {}, { 'x-keeper-key': keeperKey })).status, 200);
+    };
+    await score(a.data.code, a.data.keeperKey, [['4', 0, 'fg2_made'], ['4', 0, 'fg3_made'], ['3', 1, 'fg2_made']]);        // home book: Lee 5 pts
+    assert.equal((await j('GET', `/api/games/${a.data.code}/reconcile`)).data.state, 'waiting');                              // other book not final yet
+    await score(b.data.code, b.data.keeperKey, [['4', 0, 'fg2_made'], ['4', 0, 'fg2_made'], ['3', 1, 'fg2_made']]);          // away book: Lee 4 pts
+
+    const v = (await j('GET', `/api/games/${a.data.code}/reconcile`)).data;
+    assert.equal(v.state, 'in_review');
+    assert.equal(v.windowHours, 48); assert.equal(v.window.open, true);
+    const pts = v.lines.find((l) => l.stat === 'pts' && l.name === 'Lee');
+    assert.deepEqual([pts.mine, pts.theirs, pts.status], [5, 4, 'review']);
+    assert.ok(v.agreed > 0);
+
+    // "ours stands": one team is not enough, both teams make it disputed before the window ends
+    assert.equal((await j('POST', `/api/games/${a.data.code}/reconcile/stand`, { line: pts.key })).status, 401);
+    assert.equal((await j('POST', `/api/games/${a.data.code}/reconcile/stand`, { line: pts.key }, { 'x-keeper-key': a.data.keeperKey })).status, 200);
+    assert.equal((await j('GET', `/api/games/${a.data.code}/reconcile`)).data.lines.find((l) => l.key === pts.key).status, 'review');
+    await j('POST', `/api/games/${b.data.code}/reconcile/stand`, { line: pts.key }, { 'x-keeper-key': b.data.keeperKey });
+    const after = (await j('GET', `/api/games/${b.data.code}/reconcile`)).data;
+    assert.equal(after.lines.find((l) => l.key === pts.key).status, 'disputed');
+    assert.deepEqual([after.lines.find((l) => l.key === pts.key).mine, after.lines.find((l) => l.key === pts.key).theirs], [4, 5]);   // each side sees its own number first
+
+    // leaderboards use each team's own book, so Lee is counted once with the home team's 5, not twice
+    const lead = (await j('GET', '/api/leaders/basketball?season=2026-27')).data;
+    const ptsBoard = lead.categories.find((c) => c.id === 'pts') || lead.categories[0];
+    const lee = ptsBoard.leaders.filter((x) => x.name === 'Lee' && x.team_name === 'Twin Home');
+    assert.equal(lee.length, 1); assert.equal(lee[0].value, 5);
+    assert.equal(ptsBoard.leaders.filter((x) => x.team_name === 'Twin Away').length <= 1, true);
+
+    // once the window has closed (clock moved back 49h) lines are disputed and the books can no longer be reopened
+    await pool.query(`UPDATE game_pairs SET compared_at = now() - interval '49 hours' WHERE id = (SELECT pair_id FROM games WHERE code = $1)`, [a.data.code]);
+    const closed = (await j('GET', `/api/games/${a.data.code}/reconcile`)).data;
+    assert.equal(closed.state, 'settled'); assert.equal(closed.window.open, false);
+    assert.ok(closed.lines.every((l) => l.status === 'disputed'));
+    const re = await j('POST', `/api/games/${a.data.code}/reopen`, { reason: 'late fix' }, ADMIN);
+    assert.equal(re.status, 423);
+    const flagged = (await j('GET', '/api/leaders/basketball?season=2026-27')).data.categories.flatMap((c) => c.leaders).filter((x) => x.name === 'Lee' && x.team_name === 'Twin Home');
+    assert.ok(flagged.every((x) => x.discrepancy === true));
+  });
 }
