@@ -125,6 +125,8 @@
       alerts.push(`<div class="notice"><b>${esc(c.periodNames[cp - 2] || '')} has not been checked</b> against the scoreboard. <button class="btn small" data-act="check" data-period="${cp - 1}">Check it</button></div>`);
     }
 
+    if (state.data.game.paired && state.recon) alerts.push(`<div class="recon">${U.reconcileHTML(state.recon, !!state.key)}</div>`);
+
     // team tabs
     const tabs = c.teams.map((t) => `<button class="tt ${t.side === 'away' ? 'away' : ''}" data-team="${t.id}" aria-pressed="${state.team === t.id}"><b>${esc(t.name)}</b><span>${t.currentRole ? esc(sport.roleLabel) + ': ' + esc(t.currentRole) : (t.side === 'home' ? 'Home' : 'Away')}</span></button>`).join('');
 
@@ -567,10 +569,14 @@
     }
   }
 
+  async function loadRecon() {
+    if (!state.data.game.paired) return;
+    try { state.recon = await api('GET', `/api/games/${code}/reconcile`); render(); } catch (e) { /* keep old */ }
+  }
   async function refresh() {
     try {
       const d = await api('GET', `/api/games/${code}`);
-      if (d.game.version >= state.data.game.version) { state.data = d; recompute(); render(); }
+      if (d.game.version >= state.data.game.version) { state.data = d; recompute(); render(); loadRecon(); }
     } catch (e) { /* offline */ }
   }
 
@@ -602,6 +608,10 @@
   document.addEventListener('click', async (e) => {
     const t = e.target.closest('button, [data-act]');
     if (!t || t.closest('#sheet')) return;
+    if (t.dataset.stand) {
+      try { await api('POST', `/api/games/${code}/reconcile/stand`, { line: t.dataset.stand }, hdr()); toast('Noted: your number stands.'); loadRecon(); } catch (ex) { toast(ex.message, 'bad'); }
+      return;
+    }
     if (t.dataset.team) { state.team = Number(t.dataset.team); state.sel = null; store.setItem(`team:${code}`, state.team); render(); return; }
     if (t.dataset.player) { const id = Number(t.dataset.player); state.sel = state.sel === id ? null : id; render(); return; }
     if (t.dataset.ev) { handleAction(t.dataset.ev); return; }
@@ -669,7 +679,8 @@
     try { const k = JSON.parse(store.getItem(`clock:${code}`) || 'null'); if (k && k.period === state.period) state.clock = k; } catch (e) { /* ignore */ }
     recompute(); render();
     flush();
-    U.listen(code, () => state.data.game.version, (d) => { if (d.game.version >= state.data.game.version) { state.data = d; recompute(); render(); } });
+    loadRecon();
+    U.listen(code, () => state.data.game.version, (d) => { if (d.game.version >= state.data.game.version) { state.data = d; recompute(); render(); loadRecon(); } });
   }
   boot();
 })();

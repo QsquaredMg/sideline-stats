@@ -177,3 +177,9 @@ table.rules ul { margin: 0; padding-left: 1.1em; }
 .decisions h3 { margin: 0; font-size: 1rem; }
 .panel.decisions { margin: 0 0 12px; }
 @media (min-width: 720px) { #app .leadcard { display: inline-block; width: calc(50% - 8px); vertical-align: top; box-sizing: border-box; } #app .leadcard:nth-of-type(odd) { margin-right: 12px; } }
+
+/* two books */
+.check { display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 600; }
+.check input { width: 20px; height: 20px; }
+#book-field { border: 0; padding: 0; margin: 12px 0; }
+#book-field legend { font-weight: 700; margin-bottom: 4px; }

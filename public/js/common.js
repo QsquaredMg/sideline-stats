@@ -163,5 +163,27 @@
     }
   }
 
-  window.UI = { $, $$, esc, api, compute, fmtTime, fmtDateTime, boardHTML, lineScoreHTML, boxHTML, decisionsHTML, playsHTML, playText, checksSummary, listen, copyText, safeStorage };
+  /** Two-books comparison panel. `v` is GET /api/games/:code/reconcile. `canStand` adds the "ours stands" buttons (keeper only). */
+  function reconcileHTML(v, canStand) {
+    if (!v || !v.paired) return '';
+    const names = (id) => (v.books.find((b) => b.team_id === id) || {}).team_name || 'Their book';
+    const mine = names(v.you), other = v.books.find((b) => b.team_id !== v.you);
+    const theirName = other ? other.team_name : 'the other team';
+    if (v.state === 'one_book') return `<div class="notice"><b>This is ${esc(mine)}'s book.</b> The other team can keep its own book of this game with the code <b>${esc(v.books[0].code)}</b>. When both books are final they are compared automatically.</div>`;
+    if (v.state === 'waiting') return `<div class="notice"><b>Waiting for both books to be final.</b> ${esc(mine)} and ${esc(theirName)} each keep their own book. They are compared as soon as both are marked final.</div>`;
+    if (v.state === 'agreed') return `<div class="notice good"><b>Agreed.</b> Both books match on all ${v.agreed} lines.</div>`;
+    const win = v.window;
+    const head = v.state === 'in_review'
+      ? `<div class="notice warn"><b>Review window: ${win.hoursLeft} ${win.hoursLeft === 1 ? 'hour' : 'hours'} left.</b> ${v.lines.length} ${v.lines.length === 1 ? 'line differs' : 'lines differ'}. Each team can fix its own book until then. After that each team keeps its own number and the difference is noted.</div>`
+      : `<div class="notice"><b>Settled with ${v.lines.length} noted ${v.lines.length === 1 ? 'difference' : 'differences'}.</b> Each team keeps its own book. Leaderboards use each team's own numbers.</div>`;
+    const rows = v.lines.map((l) => {
+      const who = l.jersey === null ? esc(l.team_name) : `#${esc(l.jersey)} ${esc(l.name)} <span class="muted">${esc(l.team_name)}</span>`;
+      const st = l.status === 'disputed' ? '<span class="badge final">Noted</span>' : '<span class="badge live">Review</span>';
+      const btn = canStand && l.status === 'review' && !l.you_stand ? `<button class="btn small" data-stand="${esc(l.key)}">Ours stands</button>` : (l.you_stand ? '<span class="muted small">You said ours stands</span>' : '');
+      return `<tr><td>${who}</td><td>${esc(l.label)}</td><td class="num"><b>${l.mine}</b></td><td class="num">${l.theirs}</td><td>${st} ${btn}</td></tr>`;
+    }).join('');
+    return `${head}<div class="scroll"><table class="box"><caption>Differences between the two books</caption><thead><tr><th scope="col">Who</th><th scope="col">Stat</th><th scope="col">${esc(mine)}</th><th scope="col">${esc(theirName)}</th><th scope="col"></th></tr></thead><tbody>${rows}</tbody></table></div><p class="muted small">${v.agreed} other lines agree.</p>`;
+  }
+
+  window.UI = { reconcileHTML, $, $$, esc, api, compute, fmtTime, fmtDateTime, boardHTML, lineScoreHTML, boxHTML, decisionsHTML, playsHTML, playText, checksSummary, listen, copyText, safeStorage };
 })();

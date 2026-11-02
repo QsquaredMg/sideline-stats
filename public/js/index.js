@@ -49,6 +49,8 @@
     try {
       const r = await api('POST', '/api/games', {
         sport: $('#sport').value, format: $('#format').value, date: $('#date').value, level: $('#level').value, pin: $('#pin').value,
+        book: (document.querySelector('input[name="book"]:checked') || {}).value || undefined,
+        pair_with: $('#pairwith').value.trim().toUpperCase() || undefined,
         home: { name: $('#hname').value, roster: $('#hroster').value },
         away: { name: $('#aname').value, roster: $('#aroster').value },
       });
@@ -56,6 +58,7 @@
       $('#k-link').value = origin + r.keeperUrl;
       $('#p-link').value = origin + r.publicUrl;
       $('#open-keeper').href = r.keeperUrl;
+      if (r.pairCode) { $('#pair-code').textContent = r.pairCode; $('#pair-note').classList.remove('hidden'); }
       $('#create-section').classList.add('hidden');
       const done = $('#done');
       done.classList.remove('hidden');

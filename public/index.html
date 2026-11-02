@@ -70,6 +70,15 @@
           <p class="hint">Both teams are tracked with the same rules.</p></div>
         </fieldset>
       </div>
+      <fieldset class="field" id="book-field">
+        <legend>Whose book is this?</legend>
+        <label class="check"><input type="radio" name="book" value="" checked> One shared book for both teams <span class="muted small">(default)</span></label>
+        <label class="check"><input type="radio" name="book" value="home"> Home team's own book</label>
+        <label class="check"><input type="radio" name="book" value="away"> Away team's own book</label>
+        <p class="hint">Each team can keep its own book of the same game. When both are final they are compared automatically, with a 48-hour window to fix mistakes. Anything still different stays as a noted difference, and each team keeps its own numbers.</p>
+        <div class="field" style="margin-top:10px;"><label for="pairwith">Joining the other team's book? Enter their game code (optional)</label>
+          <input id="pairwith" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Their code, like K7M2QX" style="max-width:280px;"></div>
+      </fieldset>
       <div class="field hidden" id="pin-field">
         <label for="pin">School PIN</label>
         <input id="pin" type="password" autocomplete="off">
@@ -90,6 +99,7 @@
       <div class="row"><input id="k-link" type="text" readonly><button class="btn" data-copy="k-link">Copy</button></div></div>
     <div class="field"><label>Public link (for everyone else)</label>
       <div class="row"><input id="p-link" type="text" readonly><button class="btn" data-copy="p-link">Copy</button></div></div>
+    <div class="notice hidden" id="pair-note"><b>Your team's own book.</b> To let the other team keep theirs, give them this code and tell them to choose "Join" when they start a game: <b id="pair-code"></b></div>
     <a class="btn primary" id="open-keeper" href="#">Open stat keeper</a>
   </section>
 </main>

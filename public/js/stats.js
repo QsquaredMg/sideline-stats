@@ -71,13 +71,14 @@
       + select('f-format', 'Rules', d.formats.map((f) => ({ value: f.id, label: f.label })), d.format).replace('<select', '<select data-filter="format"');
     const cats = d.categories.filter((c) => c.leaders.length).map((c) => `
       <section class="panel leadcard"><h2>${esc(c.label)}</h2>${c.qualText ? `<p class="muted small">${esc(c.qualText)}</p>` : ''}
-        <ol class="leadlist">${c.leaders.map((l) => `<li><span class="rank">${l.rank}${l.tied ? 'T' : ''}</span><span class="who"><b>${esc(l.name || '#' + l.jersey)}</b> <span class="muted small">#${esc(l.jersey)} <a href="/t/${l.team_id}">${esc(l.team_name)}</a></span></span><span class="val num">${esc(l.display)}</span></li>`).join('')}</ol></section>`).join('');
+        <ol class="leadlist">${c.leaders.map((l) => `<li><span class="rank">${l.rank}${l.tied ? 'T' : ''}</span><span class="who"><b>${esc(l.name || '#' + l.jersey)}</b>${l.discrepancy ? ' <span class="badge final" title="The other team\'s book still shows a different number">Noted</span>' : ''} <span class="muted small">#${esc(l.jersey)} <a href="/t/${l.team_id}">${esc(l.team_name)}</a></span></span><span class="val num">${esc(l.display)}</span></li>`).join('')}</ol></section>`).join('');
+    const anyNoted = d.categories.some((c) => c.leaders.some((l) => l.discrepancy));
     $('#app').innerHTML = `
       <h1 style="margin:8px 0;">Leaders</h1>
       ${sportNav}
       ${filters ? `<div class="row">${filters}</div>` : ''}
       <p class="muted">${d.season ? `${esc(d.season)} season, ${d.games} finished ${d.games === 1 ? 'game' : 'games'}.` : 'No finished games yet.'}
-        Percentages and averages only rank players who meet the minimum shown, so a lucky few attempts cannot top a board. Ties share a rank.</p>
+        Percentages and averages only rank players who meet the minimum shown, so a lucky few attempts cannot top a board. Ties share a rank. Each player is ranked from the book their own team kept.${anyNoted ? ' <b>Noted</b> means the other team\'s book still shows a different number after the 48-hour review.' : ''}</p>
       ${cats || '<div class="notice">No leaders yet. Boards fill in as games are marked final.</div>'}`;
   }
   document.addEventListener('click', (e) => {

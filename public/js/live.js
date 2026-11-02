@@ -6,7 +6,8 @@
   const store = U.safeStorage();
   const state = { data: null, c: null, tab: store.getItem(`tab:${code}`) || 'box', audit: null };
 
-  const TAB_LIST = [['box', 'Box score'], ['plays', 'Play by play'], ['trust', 'Corrections and checks']];
+  const BASE_TABS = [['box', 'Box score'], ['plays', 'Play by play'], ['trust', 'Corrections and checks']];
+  const tabList = () => (state.data && state.data.game.paired ? BASE_TABS.concat([['books', 'Compare books']]) : BASE_TABS);
 
   async function load(data) {
     try { state.data = data || await api('GET', `/api/games/${code}`); } catch (e) {
@@ -15,6 +16,7 @@
     }
     state.c = U.compute(state.data);
     if (state.tab === 'trust') await loadAudit();
+    state.recon = state.data.game.paired ? await api('GET', `/api/games/${code}/reconcile`).catch(() => null) : null;
     render();
     return true;
   }
@@ -73,6 +75,7 @@
     let body;
     if (state.tab === 'plays') body = U.playsHTML(c, { showVoided: true });
     else if (state.tab === 'trust') body = trustHTML();
+    else if (state.tab === 'books') body = U.reconcileHTML(state.recon, false);
     else body = U.boxHTML(c);
 
     $('#app').innerHTML = `
@@ -85,7 +88,7 @@
         <a class="btn small quiet" href="/api/games/${esc(code)}/export.csv">Download box score (CSV)</a>
         <button class="btn small quiet" id="flag-btn">Report a problem</button>
       </div>
-      <div class="tabs" role="tablist">${TAB_LIST.map(([id, label]) => `<button role="tab" data-tab="${id}" aria-selected="${state.tab === id}">${label}</button>`).join('')}</div>
+      <div class="tabs" role="tablist">${tabList().map(([id, label]) => `<button role="tab" data-tab="${id}" aria-selected="${state.tab === id}">${label}</button>`).join('')}</div>
       <div role="tabpanel">${body}</div>`;
   }
 
