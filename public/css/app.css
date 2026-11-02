@@ -1,36 +1,41 @@
 /* Sideline Stats. Court-side first: big targets, high contrast, numbers that line up. */
+@font-face { font-family: Oswald; font-weight: 500; font-style: normal; font-display: swap; src: url(/fonts/oswald-latin-500-normal.woff2) format('woff2'); }
+@font-face { font-family: Oswald; font-weight: 600; font-style: normal; font-display: swap; src: url(/fonts/oswald-latin-600-normal.woff2) format('woff2'); }
+@font-face { font-family: Oswald; font-weight: 700; font-style: normal; font-display: swap; src: url(/fonts/oswald-latin-700-normal.woff2) format('woff2'); }
+@font-face { font-family: Inter; font-weight: 400; font-style: normal; font-display: swap; src: url(/fonts/inter-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family: Inter; font-weight: 500; font-style: normal; font-display: swap; src: url(/fonts/inter-latin-500-normal.woff2) format('woff2'); }
+@font-face { font-family: Inter; font-weight: 600; font-style: normal; font-display: swap; src: url(/fonts/inter-latin-600-normal.woff2) format('woff2'); }
+@font-face { font-family: Inter; font-weight: 700; font-style: normal; font-display: swap; src: url(/fonts/inter-latin-700-normal.woff2) format('woff2'); }
 :root {
-  --paper: #f4f6f3;
-  --panel: #ffffff;
-  --ink: #12201f;
-  --muted: #55625f;
-  --line: #d3dad5;
-  --board: #0e1618;
-  --board-2: #18242a;
-  --led: #ffb43a;
-  --led-dim: #7a5a22;
-  --home: #0b6666;
-  --home-soft: #dcefee;
-  --away: #6a3fa0;
-  --away-soft: #ebe2f6;
-  --good: #1b7a3a;
-  --good-soft: #dff1e4;
-  --bad: #b3261e;
-  --bad-soft: #f8e1df;
-  --warn: #8f5600;
-  --warn-soft: #fbecd0;
-  --focus: #1f4fd8;
-  --radius: 10px;
-  --num: "Bahnschrift", "Roboto Condensed", "Arial Narrow", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
-  --body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #0d1415; --panel: #162022; --ink: #e9efed; --muted: #9aaaa6; --line: #2a3739;
-    --home-soft: #123a3a; --away-soft: #2f2145; --good-soft: #14341f; --bad-soft: #3f1a18; --warn-soft: #3b2c0e;
-    --home: #4fc1c1; --away: #b79af0; --good: #5fcf85; --bad: #ff8a80; --warn: #ffc266; --focus: #8fb0ff;
-    --board: #070c0d; --board-2: #0f171a;
-  }
+  /* Same ink, type and neon as goatreelz.com. One look, always dark: it is read courtside, at night, in a gym. */
+  color-scheme: dark;
+  --paper: #0b0f14;
+  --panel: #1c2530;
+  --panel-2: #24303e;
+  --ink: #f5f7fa;
+  --muted: #93a2b3;
+  --line: #2c3948;
+  --board: #1c2530;
+  --board-2: #24303e;
+  --led: #f5f7fa;
+  --led-dim: #93a2b3;
+  --green: #39ff88;
+  --live: #ff6b35;
+  --gold: #ffc93c;
+  --home: #39ff88;
+  --home-soft: #12301f;
+  --away: #7dd3fc;
+  --away-soft: #10303f;
+  --good: #39ff88;
+  --good-soft: #12301f;
+  --bad: #ff8a6b;
+  --bad-soft: #3a1d14;
+  --warn: #ffc93c;
+  --warn-soft: #3a2f0e;
+  --focus: #7dd3fc;
+  --radius: 16px;
+  --num: Oswald, "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  --body: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -183,3 +188,36 @@ table.rules ul { margin: 0; padding-left: 1.1em; }
 .check input { width: 20px; height: 20px; }
 #book-field { border: 0; padding: 0; margin: 12px 0; }
 #book-field legend { font-weight: 700; margin-bottom: 4px; }
+
+/* ---- GoatReelz family look (overrides) ---- */
+h1, h2, h3, .brand { text-transform: uppercase; letter-spacing: -.005em; }
+h1 { font-weight: 700; } h2 { font-weight: 600; }
+.topbar { border-bottom: 1px solid var(--line); max-width: none; padding: 12px max(16px, calc((100vw - 980px) / 2)); }
+.brand { color: var(--ink); } .brand::first-letter { color: var(--ink); }
+.topbar nav a { color: var(--muted); text-decoration: none; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+.topbar nav a:hover { color: var(--green); }
+.btn { border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); min-height: 48px; }
+.btn:hover { background: var(--panel-2); }
+.btn.primary { background: var(--green); border-color: var(--green); color: #0b0f14; font-weight: 700; }
+.btn.primary:hover { background: var(--green); opacity: .9; }
+.btn.danger { background: transparent; }
+.btn.quiet { background: transparent; border-color: var(--line); }
+input[type=text], input[type=date], input[type=number], input[type=password], select, textarea { border: 1px solid var(--line); border-radius: 14px; background: var(--paper); color: var(--ink); }
+.panel, .leadcard { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; }
+.board { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; color: var(--ink); }
+.board .digits { color: var(--ink); text-shadow: none; }
+.board .period { color: var(--green); }
+.board .status, .board .sub { color: var(--muted); }
+.board .status.live { color: var(--live); } .board .status.live::before { background: var(--live); }
+.notice { border-radius: 14px; background: var(--panel); border: 1px solid var(--line); border-left-width: 6px; }
+.badge.live { color: var(--live); } .badge.final { color: var(--gold); }
+.tabs [aria-selected=true], .tabs button[aria-selected=true] { color: var(--green); border-color: var(--green); }
+table.box th { color: var(--muted); }
+.leadlist .rank { color: var(--muted); }
+.leadlist li:first-child .rank, .leadlist li:first-child .val { color: var(--green); }
+.gamelist a { border-radius: 16px; }
+dialog { border: 1px solid var(--line); }
+.brand { white-space: nowrap; }
+.topbar nav { gap: 4px 14px; flex-wrap: wrap; justify-content: flex-end; font-size: .875rem; }
+.topbar nav a { min-height: 40px; }
+main.wrap > h1:first-child { margin-top: 20px; }
