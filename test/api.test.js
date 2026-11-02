@@ -381,4 +381,71 @@ if (!URL_) {
     await post(live, 'fg2_made', { team_id: live.teamIds[0], player_id: live.home['1'] });
     assert.equal((await j('GET', '/api/athletes/search?q=phantom', null, AUTH)).data.athletes.length, 0);
   });
+
+  /* ---- school PINs: athletic directors choose their own PIN for starting games ---- */
+  test('school PINs: register, claim teams, and guard game creation', async () => {
+    const G = (home, away, pin, headers) => j('POST', '/api/games', {
+      sport: 'basketball', pin, home: { name: home, roster: '1 A' }, away: { name: away, roster: '2 B' },
+    }, headers);
+
+    // registering: PIN rules, duplicates, hash never exposed
+    assert.equal((await j('POST', '/api/schools', { name: 'Hinds High', pin: '123' })).status, 400);
+    assert.equal((await j('POST', '/api/schools', { name: 'X', pin: 'longenough' })).status, 400);
+    const reg = await j('POST', '/api/schools', { name: 'Hinds High', pin: 'Rams-2026' });
+    assert.equal(reg.status, 201);
+    const hinds = reg.data.school.id;
+    assert.equal((await j('POST', '/api/schools', { name: ' hinds   HIGH ', pin: 'another-pin' })).status, 409);
+    const list = await j('GET', '/api/schools');
+    assert.equal(JSON.stringify(list.data).includes('pin'), false);
+    const mur = (await j('POST', '/api/schools', { name: 'Murrah High', pin: 'Mustang-77' })).data.school.id;
+
+    // before any team is claimed the old rule applies (open here)
+    assert.equal((await G('Hinds Eagles', 'Open Foes', '')).status, 201);
+
+    // claiming teams needs the school PIN; a team belongs to one school
+    const claim = (id, pin, name) => j('POST', `/api/schools/${id}/teams`, { pin, teams: [{ name, sport: 'basketball' }] });
+    assert.equal((await claim(hinds, 'wrong-pin', 'Hinds Eagles')).status, 401);
+    assert.equal((await claim(hinds, 'Rams-2026', 'Hinds Eagles')).status, 200);
+    assert.equal((await claim(mur, 'Mustang-77', 'hinds eagles')).status, 409);
+    assert.equal((await j('POST', `/api/schools/${hinds}/teams`, { pin: 'Rams-2026', teams: [{ name: 'Hinds Eagles', sport: 'nope' }] })).status, 400);
+    assert.equal((await claim(mur, 'Mustang-77', 'Murrah Mustangs')).status, 200);
+    const shown = (await j('GET', '/api/schools')).data.schools.find((x) => x.id === hinds);
+    assert.deepEqual(shown.teams.map((t) => t.name), ['Hinds Eagles']);
+
+    // now starting a game with a claimed team needs that school's PIN, on either side
+    const no = await G('Hinds Eagles', 'Brand New Opponent', '');
+    assert.equal(no.status, 401);
+    assert.equal(no.data.needPin, true);
+    assert.deepEqual(no.data.schools, ['Hinds High']);
+    assert.equal((await G('Hinds Eagles', 'Brand New Opponent', 'Mustang-77')).status, 401);       // another school's PIN is not enough
+    assert.equal((await G('Hinds Eagles', 'Brand New Opponent', 'Rams-2026')).status, 201);
+    assert.equal((await G('Visitors United', 'Hinds Eagles', 'Rams-2026')).status, 201);           // away side counts too
+    assert.equal((await G('Hinds Eagles', 'Murrah Mustangs', 'Mustang-77')).status, 201);          // either involved school's PIN works
+    assert.equal((await G('Hinds Eagles', 'Admin Overrides', '', ADMIN)).status, 201);              // operator override
+
+    // a refused attempt leaves nothing behind (teams created inside the transaction roll back)
+    await G('Hinds Eagles', 'Should Not Exist Team', 'wrong-pin');
+    const ghost = await pool.query("SELECT 1 FROM teams WHERE name_key = 'should not exist team'");
+    assert.equal(ghost.rows.length, 0);
+
+    // unrelated teams are still open
+    assert.equal((await G('Plain Team One', 'Plain Team Two', '')).status, 201);
+  });
+
+  test('school PINs: change and reset', async () => {
+    const id = (await j('POST', '/api/schools', { name: 'Pearl High', pin: 'first-pin-1' })).data.school.id;
+    const change = (body, headers) => j('POST', `/api/schools/${id}/pin`, body, headers);
+    assert.equal((await change({ pin: 'nope-nope', newPin: 'second-pin-2' })).status, 401);
+    assert.equal((await change({ pin: 'first-pin-1', newPin: 'abc' })).status, 400);
+    assert.equal((await change({ pin: 'first-pin-1', newPin: 'second-pin-2' })).status, 200);
+    assert.equal((await j('POST', `/api/schools/${id}/teams`, { pin: 'first-pin-1', teams: [{ name: 'Pearl Pirates', sport: 'basketball' }] })).status, 401);
+    assert.equal((await j('POST', `/api/schools/${id}/teams`, { pin: 'second-pin-2', teams: [{ name: 'Pearl Pirates', sport: 'basketball' }] })).status, 200);
+    // forgotten PIN: only the operator can reset it
+    assert.equal((await change({ newPin: 'reset-by-admin' })).status, 401);
+    assert.equal((await change({ newPin: 'reset-by-admin' }, ADMIN)).status, 200);
+    const g = await j('POST', '/api/games', { sport: 'basketball', pin: 'reset-by-admin', home: { name: 'Pearl Pirates', roster: '1 A' }, away: { name: 'Anyone Else', roster: '2 B' } });
+    assert.equal(g.status, 201);
+    const row = await pool.query('SELECT pin_salt, pin_hash FROM schools WHERE id = $1', [id]);
+    assert.equal(JSON.stringify(row.rows[0]).includes('reset-by-admin'), false);     // only a salted hash is stored
+  });
 }

@@ -7,10 +7,12 @@ const { Pool } = require('pg');
 const Sports = require('./shared/sports');
 const Engine = require('./shared/engine');
 const { makeStats } = require('./lib/stats');
+const Pins = require('./lib/pins');
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_PIN = process.env.ADMIN_PIN || '';   // athletic director / league admin: corrections after final, dispute resolution
 const CREATE_PIN = process.env.CREATE_PIN || ''; // optional: only people who know this can start a game
+const SCHOOL_SETUP_CODE = process.env.SCHOOL_SETUP_CODE || ''; // optional: if set, only people who know it can register a school (stops name squatting)
 const STATS_API_KEY = process.env.STATS_API_KEY || ''; // optional: lets GoatReelz (server-to-server) look up athletes and read season lines
 
 const pool = new Pool({
@@ -219,6 +221,7 @@ app.use(express.static(pub, { maxAge: '5m', index: 'index.html' }));
 const page = (file) => (req, res) => res.sendFile(path.join(pub, file));
 app.get('/k/:code', page('keeper.html'));
 app.get('/g/:code', page('live.html'));
+app.get('/school', page('school.html'));
 app.get('/rules', page('rules.html'));
 app.get('/t/:id', page('stats.html'));
 app.get('/leaders', page('stats.html'));
@@ -232,13 +235,115 @@ app.get('/healthz', wrap(async (req, res) => {
 
 /* ---- config ---- */
 app.get('/api/config', (req, res) => {
-  res.json({ sports: Sports.list(), createPinRequired: !!CREATE_PIN, adminEnabled: !!ADMIN_PIN });
+  res.json({ sports: Sports.list(), createPinRequired: !!CREATE_PIN, adminEnabled: !!ADMIN_PIN, schoolSetupCodeRequired: !!SCHOOL_SETUP_CODE });
 });
+
+/* ---- schools: athletic directors set their own PIN for starting games ---- */
+const needPin = (message, schools) => Object.assign(httpErr(401, message), { extra: { needPin: true, schools } });
+
+/**
+ * Who may start this game? If either team belongs to a school, someone must know one of those schools' PINs
+ * (the operator's ADMIN_PIN or CREATE_PIN also work). Otherwise the old rule applies: CREATE_PIN if one is set,
+ * and open if not. Runs inside the game-creation transaction, so a refusal rolls back any teams just created.
+ */
+async function authorizeCreate(db, req, pin, teamIds) {
+  const { rows: schools } = await db.query(
+    `SELECT DISTINCT s.id, s.name, s.pin_salt, s.pin_hash FROM teams t JOIN schools s ON s.id = t.school_id WHERE t.id = ANY($1::int[])`, [teamIds]);
+  const isAdmin = !!ADMIN_PIN && safeEq(req.get('x-admin-pin'), ADMIN_PIN);
+  if (!schools.length) {
+    if (CREATE_PIN && !isAdmin && !safeEq(pin, CREATE_PIN)) throw httpErr(401, 'That access PIN is not right.');
+    return isAdmin ? 'admin' : CREATE_PIN ? 'create_pin' : 'open';
+  }
+  if (isAdmin) return 'admin';
+  if (CREATE_PIN && safeEq(pin, CREATE_PIN)) return 'create_pin';
+  const names = schools.map((s) => s.name);
+  if (!pin) throw needPin(`${names.join(' and ')} needs its school PIN before a game can be started. Ask your athletic director.`, names);
+  const hit = schools.find((s) => Pins.verifyPin(pin, s.pin_salt, s.pin_hash));
+  if (!hit) throw needPin('That school PIN is not right.', names);
+  return `school:${hit.name}`;
+}
+
+async function loadSchool(id) {
+  const { rows } = await pool.query('SELECT * FROM schools WHERE id = $1', [Number(id) || 0]);
+  if (!rows[0]) throw httpErr(404, 'School not found.');
+  return rows[0];
+}
+const cleanName = (v) => String(v || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+const pinLimit = rateLimit('school-pin', 20, 3600 * 1000); // guessing PINs is slow by design
+
+app.get('/api/schools', wrap(async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT s.id, s.name, COALESCE(json_agg(json_build_object('name', t.name, 'sport', t.sport) ORDER BY t.sport, t.name) FILTER (WHERE t.id IS NOT NULL), '[]') AS teams
+       FROM schools s LEFT JOIN teams t ON t.school_id = s.id GROUP BY s.id ORDER BY s.name`);
+  res.json({ schools: rows });
+}));
+
+// An athletic director registers their school and picks the PIN.
+app.post('/api/schools', rateLimit('school-create', 10, 3600 * 1000), wrap(async (req, res) => {
+  const b = req.body || {};
+  if (SCHOOL_SETUP_CODE && !safeEq(b.setupCode, SCHOOL_SETUP_CODE)) throw httpErr(401, 'That setup code is not right. Ask the Sideline Stats administrator for it.');
+  const name = cleanName(b.name);
+  if (name.length < 2) throw httpErr(400, 'Enter your school name.');
+  const bad = Pins.checkPinFormat(b.pin);
+  if (bad) throw httpErr(400, bad);
+  const { salt, hash } = Pins.hashPin(b.pin);
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO schools (name, name_key, pin_salt, pin_hash) VALUES ($1,$2,$3,$4) RETURNING id, name', [name, name.toLowerCase(), salt, hash]);
+    res.status(201).json({ school: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') throw httpErr(409, 'A school with that name is already registered. If it is yours, ask the administrator to reset its PIN.');
+    throw err;
+  }
+}));
+
+// Claim teams so the school's PIN guards games they play in.
+app.post('/api/schools/:id/teams', pinLimit, wrap(async (req, res) => {
+  const b = req.body || {};
+  const school = await loadSchool(req.params.id);
+  const isAdmin = !!ADMIN_PIN && safeEq(req.get('x-admin-pin'), ADMIN_PIN);
+  if (!isAdmin && !Pins.verifyPin(b.pin, school.pin_salt, school.pin_hash)) throw httpErr(401, 'That school PIN is not right.');
+  const list = Array.isArray(b.teams) ? b.teams.slice(0, 30) : [];
+  if (!list.length) throw httpErr(400, 'Add at least one team.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const claimed = [];
+    for (const t of list) {
+      const sport = Sports.get(t && t.sport);
+      if (!sport) throw httpErr(400, 'Pick a sport for each team.');
+      const team = await upsertTeam(client, t.name, sport.id);
+      const cur = (await client.query('SELECT school_id FROM teams WHERE id = $1 FOR UPDATE', [team.id])).rows[0];
+      if (cur.school_id && cur.school_id !== school.id) throw httpErr(409, `${team.name} (${sport.name}) already belongs to another school. Ask the administrator if that is a mistake.`);
+      await client.query('UPDATE teams SET school_id = $1 WHERE id = $2', [school.id, team.id]);
+      claimed.push({ name: team.name, sport: sport.id });
+    }
+    await client.query('COMMIT');
+    res.json({ school: { id: school.id, name: school.name }, teams: claimed });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}));
+
+// Change the PIN (needs the current one). The operator's ADMIN_PIN can reset a forgotten PIN.
+app.post('/api/schools/:id/pin', pinLimit, wrap(async (req, res) => {
+  const b = req.body || {};
+  const school = await loadSchool(req.params.id);
+  const isAdmin = !!ADMIN_PIN && safeEq(req.get('x-admin-pin'), ADMIN_PIN);
+  if (!isAdmin && !Pins.verifyPin(b.pin, school.pin_salt, school.pin_hash)) throw httpErr(401, 'That school PIN is not right.');
+  const bad = Pins.checkPinFormat(b.newPin);
+  if (bad) throw httpErr(400, bad);
+  const { salt, hash } = Pins.hashPin(b.newPin);
+  await pool.query('UPDATE schools SET pin_salt = $1, pin_hash = $2 WHERE id = $3', [salt, hash, school.id]);
+  res.json({ ok: true });
+}));
 
 /* ---- create game ---- */
 app.post('/api/games', rateLimit('create', 30, 3600 * 1000), wrap(async (req, res) => {
   const b = req.body || {};
-  if (CREATE_PIN && !safeEq(b.pin, CREATE_PIN)) throw httpErr(401, 'That access PIN is not right.');
   const sport = Sports.get(b.sport);
   if (!sport) throw httpErr(400, 'Pick a sport.');
   const homeRoster = parseRoster(b.home && b.home.roster, 'Home');
@@ -254,6 +359,7 @@ app.post('/api/games', rateLimit('create', 30, 3600 * 1000), wrap(async (req, re
     const home = await upsertTeam(client, b.home && b.home.name, sport.id);
     const away = await upsertTeam(client, b.away && b.away.name, sport.id);
     if (home.id === away.id) throw httpErr(400, 'Home and away must be different teams.');
+    const authorizedBy = await authorizeCreate(client, req, b.pin, [home.id, away.id]);
 
     let code, key = newKey();
     for (let i = 0; i < 8; i++) {
@@ -272,7 +378,7 @@ app.post('/api/games', rateLimit('create', 30, 3600 * 1000), wrap(async (req, re
         await client.query('INSERT INTO game_players (game_id, player_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [gameId, row.id]);
       }
     }
-    await audit(client, gameId, 'game_created', 'keeper', { sport: sport.id, format: format || sport.formatId || '', home: home.name, away: away.name, home_players: homeRoster.length, away_players: awayRoster.length });
+    await audit(client, gameId, 'game_created', 'keeper', { sport: sport.id, format: format || sport.formatId || '', home: home.name, away: away.name, authorized_by: authorizedBy, home_players: homeRoster.length, away_players: awayRoster.length });
     await client.query('COMMIT');
     res.status(201).json({ code, keeperKey: key, publicUrl: `/g/${code}`, keeperUrl: `/k/${code}?key=${key}` });
   } catch (err) {
@@ -578,7 +684,7 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Bad JSON.' });
   const status = err.status || 500;
   if (status >= 500) console.error(err);
-  if (req.path.startsWith('/api')) return res.status(status).json({ error: status >= 500 ? 'Something went wrong on our end.' : err.message });
+  if (req.path.startsWith('/api')) return res.status(status).json({ error: status >= 500 ? 'Something went wrong on our end.' : err.message, ...(status < 500 ? err.extra : {}) });
   res.status(status).send(status === 404 ? 'Not found' : 'Error');
 });
 

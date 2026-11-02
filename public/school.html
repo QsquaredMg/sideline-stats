@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e1618">
+<title>Athletic directors · Sideline Stats</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">Sideline Stats</a>
+  <nav><a href="/leaders/basketball">Leaders</a><a href="/rules">How stats are counted</a></nav>
+</header>
+<main class="wrap">
+  <h1>Athletic directors</h1>
+  <p class="muted">Choose your own PIN. Once your teams are registered, nobody can start a game for them without it, so only the scorers you trust can. Games, stats and box scores stay public.</p>
+
+  <section class="panel" style="margin: 20px 0;" aria-labelledby="reg">
+    <h2 id="reg">1. Register your school</h2>
+    <form id="reg-form" novalidate>
+      <div class="field"><label for="sname">School or club name</label><input id="sname" type="text" maxlength="60" autocomplete="organization" required></div>
+      <div class="field"><label for="spin">Choose a PIN</label><input id="spin" type="password" autocomplete="new-password" minlength="6" maxlength="40" required>
+        <p class="hint">At least 6 characters. Share it only with coaches and scorers. We store only a scrambled version, so nobody can read it back, and we cannot look it up for you.</p></div>
+      <div class="field"><label for="spin2">Type the PIN again</label><input id="spin2" type="password" autocomplete="new-password" required></div>
+      <div class="field hidden" id="setup-field"><label for="setup">Setup code</label><input id="setup" type="password" autocomplete="off">
+        <p class="hint">Ask the Sideline Stats administrator for the setup code.</p></div>
+      <div id="reg-msg" class="notice hidden" role="alert"></div>
+      <button class="btn primary" type="submit" id="reg-btn">Register school</button>
+    </form>
+  </section>
+
+  <section class="panel" style="margin: 20px 0;" aria-labelledby="teams">
+    <h2 id="teams">2. Add your teams</h2>
+    <p class="muted">Add each team exactly as you type it when starting games, for example “Provine Rams” in basketball. One team per line.</p>
+    <form id="teams-form" novalidate>
+      <div class="cols two">
+        <div class="field"><label for="tschool">School</label><select id="tschool"></select></div>
+        <div class="field"><label for="tsport">Sport</label><select id="tsport"></select></div>
+      </div>
+      <div class="field"><label for="tnames">Team names</label><textarea id="tnames" spellcheck="false" placeholder="Provine Rams&#10;Provine Lady Rams"></textarea></div>
+      <div class="field"><label for="tpin">School PIN</label><input id="tpin" type="password" autocomplete="off" required></div>
+      <div id="teams-msg" class="notice hidden" role="alert"></div>
+      <button class="btn primary" type="submit" id="teams-btn">Add teams</button>
+    </form>
+    <h3 style="margin-top: 20px;">Registered schools</h3>
+    <ul class="gamelist" id="school-list"><li class="muted" style="padding:12px 4px;">Loading…</li></ul>
+  </section>
+
+  <section class="panel" style="margin: 20px 0;" aria-labelledby="chg">
+    <h2 id="chg">Change your PIN</h2>
+    <form id="pin-form" novalidate>
+      <div class="field"><label for="cschool">School</label><select id="cschool"></select></div>
+      <div class="field"><label for="cold">Current PIN</label><input id="cold" type="password" autocomplete="current-password" required></div>
+      <div class="field"><label for="cnew">New PIN</label><input id="cnew" type="password" autocomplete="new-password" minlength="6" maxlength="40" required></div>
+      <div id="pin-msg" class="notice hidden" role="alert"></div>
+      <button class="btn" type="submit" id="pin-btn">Change PIN</button>
+      <p class="hint">Forgot it? The Sideline Stats administrator can reset it.</p>
+    </form>
+  </section>
+</main>
+<script src="/shared/sports.js"></script>
+<script src="/shared/engine.js"></script>
+<script src="/js/common.js"></script>
+<script src="/js/school.js"></script>
+</body>
+</html>

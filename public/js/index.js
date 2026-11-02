@@ -61,6 +61,7 @@
       done.classList.remove('hidden');
       done.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (ex) {
+      if (ex.data && ex.data.needPin) { $('#pin-field').classList.remove('hidden'); $('#pin').focus(); }
       err.textContent = ex.message;
       err.classList.remove('hidden');
       err.scrollIntoView({ block: 'center' });

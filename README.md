@@ -23,7 +23,8 @@ Basketball, football, baseball, softball, soccer and volleyball. Node/Express + 
 2. Variables on the web service:
    - `DATABASE_URL` (reference the Postgres plugin variable)
    - `ADMIN_PIN` (athletic director PIN: corrections after final, dispute resolution, reopen)
-   - `CREATE_PIN` (optional: only people who know it can start games)
+   - `CREATE_PIN` (optional: one shared PIN for starting games, for teams that no school has claimed)
+   - `SCHOOL_SETUP_CODE` (optional: if set, athletic directors need it to register a school, which stops someone registering your school's name first)
    - `STATS_API_KEY` (optional: turns on the athlete lookup API GoatReelz uses; unset = those endpoints return 404)
 3. Start command is `npm start`. The schema is created automatically on boot. Health check: `/healthz`.
 
@@ -41,6 +42,13 @@ TEST_DATABASE_URL=postgres://... npm test  # plus API integration tests (WIPES t
 
 ## Adding or changing a sport
 Everything about a sport lives in `shared/sports.js`: buttons, exactly which stats each credits, how the score moves, box-score columns. The keeper UI, public page, rules page, validation and CSV export all read that one definition.
+
+## Athletic directors choose their own PIN
+Athletic directors open `/school`, register their school with a PIN they choose (6+ characters), and add their teams. From then on, starting a game that involves one of those teams needs that school's PIN: the home or the away school's PIN works, so a visiting scorer can use their own. Teams no school has claimed keep the old rule (`CREATE_PIN` if set, otherwise open). Viewing games and stats is always public.
+- PINs are stored only as salted scrypt hashes, guesses are rate limited, and a refused attempt creates nothing.
+- Changing a PIN needs the current one. A forgotten PIN is reset by the operator with `ADMIN_PIN` (send `x-admin-pin` to `POST /api/schools/:id/pin` with `{"newPin": "..."}`); the operator's `ADMIN_PIN` can also start any game.
+- A team belongs to one school; claiming one that another school owns is refused.
+- There is no ad-hoc team removal or school deletion yet.
 
 ## Season totals, leaderboards, clock and minutes
 - **Season pages** (`/t/<team id>`, `/stats`): season totals per player and leaderboards, computed only from *final* games. Seasons run August to July. Leaderboards offer total, per-game average (a player must have played in at least half their team's games) and rate stats (with a qualifying minimum). Ties share a rank. Leaders never mix formats or levels (high school vs college, men vs women).

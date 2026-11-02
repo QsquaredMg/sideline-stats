@@ -8,6 +8,17 @@
 --   * `checkpoints` hold what the official scoreboard said, so the event log can
 --     be reconciled against it at any time.
 
+-- A school (or club) is the unit an athletic director controls. The AD picks a PIN; anyone who wants to
+-- start a game involving one of the school's teams has to know it. Only a salted scrypt hash is stored.
+CREATE TABLE IF NOT EXISTS schools (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  name_key    TEXT NOT NULL UNIQUE,
+  pin_salt    TEXT NOT NULL,
+  pin_hash    TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- A team is (name, sport): "Provine Rams" basketball and "Provine Rams" football are
 -- different teams with different players, so #23 in one can never be mistaken for #23 in the other.
 CREATE TABLE IF NOT EXISTS teams (
@@ -21,6 +32,8 @@ CREATE TABLE IF NOT EXISTS teams (
 ALTER TABLE teams ADD COLUMN IF NOT EXISTS sport TEXT NOT NULL DEFAULT '';
 ALTER TABLE teams DROP CONSTRAINT IF EXISTS teams_name_key_key;
 CREATE UNIQUE INDEX IF NOT EXISTS teams_name_sport_idx ON teams (name_key, sport);
+-- v2.1: a team can belong to one school, whose PIN then guards starting games for that team.
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS school_id INT REFERENCES schools(id);
 
 -- A player is (team, jersey, name). The same jersey with a DIFFERENT name is a different
 -- person (new season, new kid), so old games keep their old names and stats never merge
