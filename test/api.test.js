@@ -557,4 +557,43 @@ if (!URL_) {
     const flagged = (await j('GET', '/api/leaders/basketball?season=2026-27')).data.categories.flatMap((c) => c.leaders).filter((x) => x.name === 'Lee' && x.team_name === 'Twin Home');
     assert.ok(flagged.every((x) => x.discrepancy === true));
   });
+
+  test('team directory: import, search, roster, school verification, game start', async () => {
+    const dir = (m, path, body, h) => j(m, `/api/directory${path}`, body, h);
+    assert.equal((await dir('GET', '/associations')).data.associations.length, 8);
+    // import is operator-only and strict
+    const csv = 'association,team,sport,conference,location,season,jersey,name,position,class\n'
+      + 'ncaa_d1,Sample State,basketball,Test Conference,Sampleville,2026-27,1,Ava Test,G,Sr\n'
+      + 'ncaa_d1,Sample State,basketball,Test Conference,Sampleville,2026-27,23,Bea Test,F,Jr\n'
+      + 'naia,Demo Tech,basketball,,,2026-27,5,"Cy, Jr. Test",C,So\n';
+    assert.equal((await dir('POST', '/import', { csv })).status, 401);
+    assert.equal((await dir('POST', '/import', { csv: csv.replace('ncaa_d1', 'nope') }, ADMIN)).status, 400);
+    assert.equal((await dir('POST', '/import', { csv: csv.replace('2026-27,23', '2026-27,1') }, ADMIN)).status, 400);       // duplicate jersey
+    const ok = await dir('POST', '/import', { csv }, ADMIN);
+    assert.equal(ok.status, 200); assert.deepEqual([ok.data.teams, ok.data.players], [2, 3]);
+
+    const found = (await dir('GET', '/teams?assoc=ncaa_d1&sport=basketball&q=sample')).data.teams;
+    assert.equal(found.length, 1); assert.equal(found[0].roster.count, 2); assert.equal(found[0].roster.verified, false);
+    assert.equal((await dir('GET', '/teams?assoc=naia')).data.teams[0].name, 'Demo Tech');
+    const r = (await dir('GET', `/teams/${found[0].id}/roster`)).data;
+    assert.deepEqual(r.players.map((x) => [x.jersey, x.name, x.position, x.class]), [['1', 'Ava Test', 'G', 'Sr'], ['23', 'Bea Test', 'F', 'Jr']]);
+    assert.equal(r.verified, false);
+
+    // a school claims the program and verifies the roster with its own PIN
+    const sc = (await j('POST', '/api/schools', { name: 'Sample State University', pin: 'sample-pin-1' })).data.school;
+    assert.equal((await dir('PUT', `/teams/${found[0].id}/roster`, { season: '2026-27', players: [{ jersey: '9', name: 'X' }], pin: 'sample-pin-1' })).status, 401);  // not claimed yet
+    assert.equal((await dir('POST', '/teams', { association: 'ncaa_d1', name: 'Sample State', sport: 'basketball', school_id: sc.id, pin: 'wrong-pin-xx' })).status, 401);
+    assert.equal((await dir('POST', '/teams', { association: 'ncaa_d1', name: 'Sample State', sport: 'basketball', school_id: sc.id, pin: 'sample-pin-1', conference: 'Test Conference' })).status, 201);
+    assert.equal((await dir('PUT', `/teams/${found[0].id}/roster`, { season: '2026-27', players: [{ jersey: '9', name: 'X' }], pin: 'nope-nope-1' })).status, 401);
+    const put = await dir('PUT', `/teams/${found[0].id}/roster`, { season: '2026-27', pin: 'sample-pin-1', players: [{ jersey: '1', name: 'Ava Test', position: 'G' }, { jersey: '2', name: 'Dee Test' }] });
+    assert.equal(put.status, 200); assert.equal(put.data.verified, true);
+    assert.equal((await dir('GET', `/teams/${found[0].id}/roster`)).data.verified, true);
+    assert.equal((await dir('POST', '/import', { csv }, ADMIN)).status, 409);                                              // import cannot overwrite a verified roster
+
+    // picking the directory team starts a game on the SAME team row, so its stats attach to the program
+    const start = await j('POST', '/api/games', { sport: 'basketball', pin: 'sample-pin-1', home: { name: 'Sample State', roster: '1 Ava Test\n2 Dee Test' }, away: { name: 'Demo Tech', roster: '5 Cy Test' } });
+    assert.equal(start.status, 201);
+    const g = (await j('GET', `/api/games/${start.data.code}`)).data;
+    assert.equal(g.teams[0].id, found[0].id);
+  });
 }

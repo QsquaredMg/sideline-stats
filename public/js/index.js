@@ -18,6 +18,51 @@
   }).catch(() => {});
   $('#sport').addEventListener('change', fillFormats);
 
+  /* ---- team directory picker: choose a program and its roster loads ---- */
+  let assocLoaded = false;
+  async function loadAssocs() {
+    if (assocLoaded) return; assocLoaded = true;
+    try {
+      const r = await api('GET', '/api/directory/associations');
+      const opts = r.associations.map((a) => `<option value="${esc(a.key)}">${esc(a.name)}${a.teams ? ` (${a.teams})` : ''}</option>`).join('');
+      for (const x of ['h', 'a']) $(`#${x}assoc`).insertAdjacentHTML('beforeend', opts);
+    } catch (e) { assocLoaded = false; }
+  }
+  function bindDir(x, nameId, rosterId) {
+    const res = $(`#${x}res`), note = $(`#${x}note`);
+    let timer = null;
+    const search = async () => {
+      const q = new URLSearchParams({ assoc: $(`#${x}assoc`).value, sport: $('#sport').value, q: $(`#${x}q`).value.trim(), limit: 12 });
+      try {
+        const r = await api('GET', `/api/directory/teams?${q}`);
+        res.innerHTML = r.teams.length ? r.teams.map((t) => {
+          const ro = t.roster ? (t.roster.verified ? `Roster ${esc(t.roster.season)} verified by the school` : `Roster ${esc(t.roster.season)} not yet confirmed by the school`) : 'No roster yet';
+          return `<li><button type="button" class="btn quiet" data-pick="${t.id}" data-x="${x}"><b>${esc(t.name)}</b><span class="muted small">${esc(t.association.name)}${t.conference ? ', ' + esc(t.conference) : ''}${t.location ? ', ' + esc(t.location) : ''}<br>${ro}</span></button></li>`;
+        }).join('') : '<li class="muted small">No teams match. A school can list its teams in the directory, or type the team in below.</li>';
+      } catch (e) { res.innerHTML = '<li class="muted small">Could not load the directory.</li>'; }
+    };
+    const later = () => { clearTimeout(timer); timer = setTimeout(search, 250); };
+    $(`#${x}dir`).addEventListener('toggle', (e) => { if (e.target.open) { loadAssocs(); search(); } });
+    $(`#${x}assoc`).addEventListener('change', search);
+    $(`#${x}q`).addEventListener('input', later);
+    $('#sport').addEventListener('change', () => { if ($(`#${x}dir`).open) search(); });
+    res.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-pick]'); if (!b) return;
+      try {
+        const r = await api('GET', `/api/directory/teams/${b.dataset.pick}/roster`);
+        $(nameId).value = r.team.name;
+        if (r.players.length) $(rosterId).value = r.players.map((p) => `${p.jersey} ${p.name}`.trim()).join('\n');
+        note.textContent = r.players.length
+          ? `Loaded the ${r.season} roster for ${r.team.name} (${r.players.length} players). ${r.verified ? 'The school has verified it.' : 'The school has not confirmed it yet, so check it before tip-off.'} You can still edit it.`
+          : `${r.team.name} has no roster in the directory yet. Type the roster below.`;
+        note.classList.remove('hidden');
+        $(`#${x}dir`).open = false;
+      } catch (ex) { note.textContent = ex.message; note.classList.remove('hidden'); }
+    });
+  }
+  bindDir('h', '#hname', '#hroster');
+  bindDir('a', '#aname', '#aroster');
+
   $('#find-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const code = $('#code').value.trim().toUpperCase();

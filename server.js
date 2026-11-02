@@ -9,6 +9,7 @@ const Engine = require('./shared/engine');
 const { makeStats } = require('./lib/stats');
 const Pins = require('./lib/pins');
 const { makeReconcile } = require('./lib/reconcile');
+const { makeDirectory } = require('./lib/directory');
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_PIN = process.env.ADMIN_PIN || '';   // athletic director / league admin: corrections after final, dispute resolution
@@ -214,6 +215,7 @@ app.use((req, res, next) => {
   });
   next();
 });
+app.use('/api/directory/import', express.json({ limit: '2mb' }));   // bulk roster CSVs are bigger than game traffic
 app.use(express.json({ limit: '50kb' }));
 
 /* ---- static + pages ---- */
@@ -709,6 +711,11 @@ app.post('/api/games/:code/disputes/:id/resolve', wrap(async (req, res) => {
     return { id: up.rows[0].id };
   });
   res.json(out);
+}));
+
+/* ---- team directory: associations, programs, season rosters ---- */
+app.use('/api/directory', makeDirectory({
+  pool, wrap, httpErr, safeEq, getAdminPin: () => ADMIN_PIN, rateLimit, loadSchool, upsertTeam,
 }));
 
 /* ---- two books: compare, and say "ours stands" ---- */

@@ -162,3 +162,34 @@ CREATE TABLE IF NOT EXISTS reconcile_stands (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (pair_id, team_id, line_key)
 );
+
+-- v4: team directory. Associations (NCAA divisions, NAIA, NJCAA ...), the programs in them, and season rosters that can be
+-- loaded when starting a game. A roster line says where it came from and whether the school itself has verified it.
+CREATE TABLE IF NOT EXISTS associations (
+  id     SERIAL PRIMARY KEY,
+  key    TEXT NOT NULL UNIQUE,
+  name   TEXT NOT NULL,
+  sort   INT  NOT NULL DEFAULT 0
+);
+INSERT INTO associations (key, name, sort) VALUES
+  ('ncaa_d1', 'NCAA Division I', 1), ('ncaa_d2', 'NCAA Division II', 2), ('ncaa_d3', 'NCAA Division III', 3),
+  ('naia', 'NAIA', 4), ('njcaa', 'NJCAA', 5), ('cccaa', 'CCCAA (California community colleges)', 6),
+  ('nwac', 'NWAC (Northwest community colleges)', 7), ('uscaa', 'USCAA', 8)
+ON CONFLICT (key) DO NOTHING;
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS association_id INT REFERENCES associations(id);
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS conference TEXT NOT NULL DEFAULT '';
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS location   TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS teams_association_idx ON teams (association_id, sport);
+CREATE TABLE IF NOT EXISTS roster_entries (
+  id          SERIAL PRIMARY KEY,
+  team_id     INT  NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  season      TEXT NOT NULL,                  -- 2026-27
+  jersey      TEXT NOT NULL,
+  name        TEXT NOT NULL DEFAULT '',
+  position    TEXT NOT NULL DEFAULT '',
+  class_year  TEXT NOT NULL DEFAULT '',
+  source      TEXT NOT NULL DEFAULT 'import', -- import | admin | school
+  verified    BOOLEAN NOT NULL DEFAULT false, -- true once the school's own PIN set or confirmed this roster
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (team_id, season, jersey)
+);

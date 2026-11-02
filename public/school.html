@@ -48,6 +48,31 @@
     <ul class="gamelist" id="school-list"><li class="muted" style="padding:12px 4px;">Loading…</li></ul>
   </section>
 
+  <section class="panel" style="margin: 20px 0;" aria-labelledby="dir">
+    <h2 id="dir">3. List a team in the directory</h2>
+    <p class="muted">Colleges and clubs can list a program under its association and publish a season roster. Scorers then pick the team and its roster loads. A roster you publish here with your PIN shows as <b>verified by the school</b>.</p>
+    <form id="dir-form" novalidate>
+      <div class="cols two">
+        <div class="field"><label for="dschool">School</label><select id="dschool"></select></div>
+        <div class="field"><label for="dassoc">Association</label><select id="dassoc"></select></div>
+      </div>
+      <div class="cols two">
+        <div class="field"><label for="dsport">Sport</label><select id="dsport"></select></div>
+        <div class="field"><label for="dseason">Season</label><input id="dseason" type="text" placeholder="2026-27" maxlength="7"></div>
+      </div>
+      <div class="cols two">
+        <div class="field"><label for="dteam">Team name</label><input id="dteam" type="text" maxlength="60" placeholder="Same as you type it when starting games"></div>
+        <div class="field"><label for="dconf">Conference (optional)</label><input id="dconf" type="text" maxlength="60"></div>
+      </div>
+      <div class="field"><label for="dloc">City and state (optional)</label><input id="dloc" type="text" maxlength="60"></div>
+      <div class="field"><label for="droster">Roster</label><textarea id="droster" spellcheck="false" placeholder="1 Ava Test&#10;23 Bea Test"></textarea>
+        <p class="hint">One player per line: jersey number, then name. Publishing again for the same season replaces the roster.</p></div>
+      <div class="field"><label for="dpin">School PIN</label><input id="dpin" type="password" autocomplete="off" required></div>
+      <div id="dir-msg" class="notice hidden" role="alert"></div>
+      <button class="btn primary" type="submit" id="dir-btn">List team and publish roster</button>
+    </form>
+  </section>
+
   <section class="panel" style="margin: 20px 0;" aria-labelledby="chg">
     <h2 id="chg">Change your PIN</h2>
     <form id="pin-form" novalidate>

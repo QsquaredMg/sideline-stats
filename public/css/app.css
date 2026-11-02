@@ -221,3 +221,10 @@ dialog { border: 1px solid var(--line); }
 .topbar nav { gap: 4px 14px; flex-wrap: wrap; justify-content: flex-end; font-size: .875rem; }
 .topbar nav a { min-height: 40px; }
 main.wrap > h1:first-child { margin-top: 20px; }
+
+/* team directory picker */
+details.dir { margin: 0 0 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); padding: 0 12px; }
+details.dir summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; color: var(--green); }
+details.dir[open] { padding-bottom: 8px; }
+.dirlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.dirlist .btn { width: 100%; justify-content: flex-start; text-align: left; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 14px; }

@@ -59,12 +59,24 @@
       <div class="cols two">
         <fieldset class="team">
           <legend>Home team</legend>
+          <details class="dir" id="hdir"><summary>Pick the home team from the team directory</summary>
+            <div class="field"><label for="hassoc">Association</label><select id="hassoc"><option value="">All associations</option></select></div>
+            <div class="field"><label for="hq">Search teams (matches the sport chosen above)</label><input id="hq" type="text" autocomplete="off" placeholder="School or team name"></div>
+            <ul class="dirlist" id="hres" aria-live="polite"></ul>
+          </details>
+          <p class="hint hidden" id="hnote"></p>
           <div class="field"><label for="hname">Team name</label><input id="hname" type="text" maxlength="60" required></div>
           <div class="field"><label for="hroster">Roster</label><textarea id="hroster" spellcheck="false" placeholder="23 Marcus Johnson&#10;4 Devin Lee&#10;10 Cruz"></textarea>
           <p class="hint">One player per line: jersey number, then name.</p></div>
         </fieldset>
         <fieldset class="team away">
           <legend>Away team</legend>
+          <details class="dir" id="adir"><summary>Pick the away team from the team directory</summary>
+            <div class="field"><label for="aassoc">Association</label><select id="aassoc"><option value="">All associations</option></select></div>
+            <div class="field"><label for="aq">Search teams (matches the sport chosen above)</label><input id="aq" type="text" autocomplete="off" placeholder="School or team name"></div>
+            <ul class="dirlist" id="ares" aria-live="polite"></ul>
+          </details>
+          <p class="hint hidden" id="anote"></p>
           <div class="field"><label for="aname">Team name</label><input id="aname" type="text" maxlength="60" required></div>
           <div class="field"><label for="aroster">Roster</label><textarea id="aroster" spellcheck="false" placeholder="3 Ray&#10;15 Moss"></textarea>
           <p class="hint">Both teams are tracked with the same rules.</p></div>

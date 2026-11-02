@@ -22,7 +22,7 @@
     const opts = schools.length
       ? schools.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')
       : '<option value="">No schools yet. Register yours first.</option>';
-    for (const id of ['#tschool', '#cschool', '#rschool']) {
+    for (const id of ['#tschool', '#cschool', '#rschool', '#dschool']) {
       const prev = $(id).value;
       $(id).innerHTML = opts;
       if (prev) $(id).value = prev;
@@ -37,6 +37,7 @@
 
   api('GET', '/api/config').then((cfg) => {
     sports = cfg.sports;
+    $('#dsport').innerHTML = cfg.sports.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
     $('#tsport').innerHTML = sports.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
     if (cfg.schoolSetupCodeRequired) $('#setup-field').classList.remove('hidden');
   }).catch(() => {});
@@ -84,6 +85,32 @@
       $('#cold').value = ''; $('#cnew').value = '';
     } catch (ex) { say('#pin-msg', ex.message, 'bad'); }
     $('#pin-btn').disabled = false;
+  });
+
+  /* ---- team directory ---- */
+  {
+    const t = new Date(), y = t.getMonth() >= 7 ? t.getFullYear() : t.getFullYear() - 1;
+    $('#dseason').value = `${y}-${String((y + 1) % 100).padStart(2, '0')}`;
+    api('GET', '/api/directory/associations').then((r) => { $('#dassoc').innerHTML = r.associations.map((a) => `<option value="${esc(a.key)}">${esc(a.name)}</option>`).join(''); }).catch(() => {});
+  }
+  $('#dir-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!$('#dschool').value) return say('#dir-msg', 'Register your school first.', 'bad');
+    const players = [];
+    for (const line of $('#droster').value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)) {
+      const m = line.match(/^#?\s*([A-Za-z0-9]{1,4})(?:[\s,.:\-]+(.*))?$/);
+      if (!m || !/\d/.test(m[1])) return say('#dir-msg', `Could not read "${line}". Use one player per line, like "23 Marcus Johnson".`, 'bad');
+      players.push({ jersey: m[1], name: (m[2] || '').trim() });
+    }
+    if (!players.length) return say('#dir-msg', 'Add at least one player.', 'bad');
+    $('#dir-btn').disabled = true;
+    try {
+      const t = await api('POST', '/api/directory/teams', { association: $('#dassoc').value, name: $('#dteam').value, sport: $('#dsport').value, conference: $('#dconf').value, location: $('#dloc').value, school_id: $('#dschool').value, pin: $('#dpin').value });
+      const r = await api('PUT', `/api/directory/teams/${t.team.id}/roster`, { season: $('#dseason').value, pin: $('#dpin').value, players });
+      say('#dir-msg', `Listed ${t.team.name}. ${r.players} players published for ${r.season}, verified by the school.`, 'good');
+      await loadSchools();
+    } catch (ex) { say('#dir-msg', ex.message, 'bad'); }
+    $('#dir-btn').disabled = false;
   });
 
   $('#rschool').addEventListener('change', renderRemoveTeams);
