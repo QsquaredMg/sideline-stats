@@ -48,7 +48,7 @@ Athletic directors open `/school`, register their school with a PIN they choose 
 - PINs are stored only as salted scrypt hashes, guesses are rate limited, and a refused attempt creates nothing.
 - Changing a PIN needs the current one. A forgotten PIN is reset by the operator with `ADMIN_PIN` (send `x-admin-pin` to `POST /api/schools/:id/pin` with `{"newPin": "..."}`); the operator's `ADMIN_PIN` can also start any game.
 - A team belongs to one school; claiming one that another school owns is refused.
-- There is no ad-hoc team removal or school deletion yet.
+- Removing a team (`DELETE /api/schools/:id/teams`) or deleting a school (`DELETE /api/schools/:id`, which also needs the school name typed as confirmation) needs the school PIN, or the operator's `ADMIN_PIN` for a school whose PIN was lost. Either one only *releases* the teams: they, their players and every game they played are left untouched, and anyone can then start games for those teams again. Stats are never deleted.
 
 ## Season totals, leaderboards, clock and minutes
 - **Season pages** (`/t/<team id>`, `/stats`): season totals per player and leaderboards, computed only from *final* games. Seasons run August to July. Leaderboards offer total, per-game average (a player must have played in at least half their team's games) and rate stats (with a qualifying minimum). Ties share a rank. Leaders never mix formats or levels (high school vs college, men vs women).

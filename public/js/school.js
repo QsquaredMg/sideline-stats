@@ -9,17 +9,26 @@
   };
 
   let sports = [];
+  let schoolData = [];
+  function renderRemoveTeams() {
+    const s = schoolData.find((x) => String(x.id) === $('#rschool').value);
+    $('#rteams').innerHTML = !s ? 'Pick your school.' : s.teams.length
+      ? s.teams.map((t, i) => `<label style="display:flex;gap:10px;align-items:center;min-height:36px;"><input type="checkbox" name="rt" value="${i}"> ${esc(t.name)} <span class="muted small">(${esc(t.sport)})</span></label>`).join('')
+      : 'This school has no teams.';
+  }
   async function loadSchools(selectId) {
     const { schools } = await api('GET', '/api/schools');
+    schoolData = schools;
     const opts = schools.length
       ? schools.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')
       : '<option value="">No schools yet. Register yours first.</option>';
-    for (const id of ['#tschool', '#cschool']) {
+    for (const id of ['#tschool', '#cschool', '#rschool']) {
       const prev = $(id).value;
       $(id).innerHTML = opts;
       if (prev) $(id).value = prev;
     }
-    if (selectId) { $('#tschool').value = selectId; $('#cschool').value = selectId; }
+    if (selectId) { $('#tschool').value = selectId; $('#cschool').value = selectId; $('#rschool').value = selectId; }
+    renderRemoveTeams();
     $('#school-list').innerHTML = schools.length
       ? schools.map((s) => `<li style="display:block;padding:10px 4px;"><b>${esc(s.name)}</b><br><span class="muted small">${
         s.teams.length ? s.teams.map((t) => `${esc(t.name)} (${esc(t.sport)})`).join(', ') : 'No teams added yet'}</span></li>`).join('')
@@ -75,5 +84,39 @@
       $('#cold').value = ''; $('#cnew').value = '';
     } catch (ex) { say('#pin-msg', ex.message, 'bad'); }
     $('#pin-btn').disabled = false;
+  });
+
+  $('#rschool').addEventListener('change', renderRemoveTeams);
+
+  $('#rm-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const s = schoolData.find((x) => String(x.id) === $('#rschool').value);
+    if (!s) return say('#rm-msg', 'Pick your school.', 'bad');
+    const picked = Array.from(document.querySelectorAll('input[name=rt]:checked')).map((c) => s.teams[Number(c.value)]);
+    if (!picked.length) return say('#rm-msg', 'Tick the teams you want to remove.', 'bad');
+    if (!window.confirm(`Remove ${picked.map((t) => t.name).join(', ')}? Anyone will be able to start games for ${picked.length === 1 ? 'it' : 'them'} again.`)) return;
+    $('#rm-btn').disabled = true;
+    try {
+      const r = await api('DELETE', `/api/schools/${s.id}/teams`, { pin: $('#rpin').value, teams: picked.map((t) => ({ name: t.name, sport: t.sport })) });
+      say('#rm-msg', `Removed ${r.removed.length} team${r.removed.length === 1 ? '' : 's'}. Their games and stats are untouched.`, 'good');
+      await loadSchools(String(s.id));
+    } catch (ex) { say('#rm-msg', ex.message, 'bad'); }
+    $('#rm-btn').disabled = false;
+  });
+
+  $('#del-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const s = schoolData.find((x) => String(x.id) === $('#rschool').value);
+    if (!s) return say('#del-msg', 'Pick your school above.', 'bad');
+    if (!$('#rpin').value) return say('#del-msg', 'Enter the school PIN in the box above.', 'bad');
+    if ($('#dname').value.trim().replace(/\s+/g, ' ').toLowerCase() !== s.name.toLowerCase()) return say('#del-msg', `Type the school name exactly: ${s.name}`, 'bad');
+    $('#del-btn').disabled = true;
+    try {
+      const r = await api('DELETE', `/api/schools/${s.id}`, { pin: $('#rpin').value, confirmName: $('#dname').value });
+      say('#del-msg', `${s.name} was deleted${r.releasedTeams ? ` and ${r.releasedTeams} team${r.releasedTeams === 1 ? ' was' : 's were'} released` : ''}.`, 'good');
+      $('#dname').value = ''; $('#rpin').value = '';
+      await loadSchools();
+    } catch (ex) { say('#del-msg', ex.message, 'bad'); }
+    $('#del-btn').disabled = false;
   });
 })();

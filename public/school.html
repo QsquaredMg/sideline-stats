@@ -59,6 +59,30 @@
       <p class="hint">Forgot it? The Sideline Stats administrator can reset it.</p>
     </form>
   </section>
+  <section class="panel" style="margin: 20px 0;" aria-labelledby="rm">
+    <h2 id="rm">Remove a team or your school</h2>
+    <div class="notice warn"><b>Heads up:</b> once a team is removed, anyone can start games for it again. Past games, players and stats are never deleted.</div>
+    <form id="rm-form" novalidate>
+      <div class="field"><label for="rschool">School</label><select id="rschool"></select></div>
+      <fieldset class="field" style="border:0;padding:0;margin:0 0 16px;">
+        <legend style="font-weight:600;margin-bottom:6px;">Teams</legend>
+        <div id="rteams" class="muted">Pick your school.</div>
+      </fieldset>
+      <div class="field"><label for="rpin">School PIN</label><input id="rpin" type="password" autocomplete="off" required></div>
+      <div id="rm-msg" class="notice hidden" role="alert"></div>
+      <div class="row">
+        <button class="btn" type="submit" id="rm-btn">Remove selected teams</button>
+      </div>
+    </form>
+    <h3 style="margin-top: 24px;">Delete the whole school</h3>
+    <p class="muted">This frees every team above and removes the school and its PIN. Type the school name to confirm. You can register the name again later.</p>
+    <form id="del-form" novalidate>
+      <div class="field"><label for="dname">Type the school name</label><input id="dname" type="text" autocomplete="off" maxlength="60"></div>
+      <div id="del-msg" class="notice hidden" role="alert"></div>
+      <button class="btn danger" type="submit" id="del-btn">Delete school</button>
+      <p class="hint">Uses the school and PIN chosen above.</p>
+    </form>
+  </section>
 </main>
 <script src="/shared/sports.js"></script>
 <script src="/shared/engine.js"></script>

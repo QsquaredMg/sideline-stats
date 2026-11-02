@@ -341,6 +341,64 @@ app.post('/api/schools/:id/pin', pinLimit, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Let go of teams. The teams, players and every game they played stay exactly as they are; they just stop
+// being guarded by this school's PIN. (Stats are never deleted.)
+app.delete('/api/schools/:id/teams', pinLimit, wrap(async (req, res) => {
+  const b = req.body || {};
+  const school = await loadSchool(req.params.id);
+  const isAdmin = !!ADMIN_PIN && safeEq(req.get('x-admin-pin'), ADMIN_PIN);
+  if (!isAdmin && !Pins.verifyPin(b.pin, school.pin_salt, school.pin_hash)) throw httpErr(401, 'That school PIN is not right.');
+  const list = Array.isArray(b.teams) ? b.teams.slice(0, 30) : [];
+  if (!list.length) throw httpErr(400, 'Pick at least one team to remove.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const removed = [];
+    for (const t of list) {
+      const name = cleanName(t && t.name);
+      const sport = Sports.get(t && t.sport);
+      const { rows } = sport && name
+        ? await client.query('UPDATE teams SET school_id = NULL WHERE school_id = $1 AND name_key = $2 AND sport = $3 RETURNING name, sport',
+          [school.id, name.toLowerCase(), sport.id])
+        : { rows: [] };
+      if (!rows.length) throw httpErr(400, `${name || 'That team'} is not one of ${school.name}'s teams.`);
+      removed.push(rows[0]);
+    }
+    await client.query('COMMIT');
+    console.log(`[schools] ${school.name}: released ${removed.map((r) => `${r.name} (${r.sport})`).join(', ')}${isAdmin ? ' (by admin)' : ''}`);
+    res.json({ removed });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}));
+
+// Delete a school. Its teams are released (and become open to anyone to start games for, so the caller must
+// type the school's name to confirm). Games and stats are untouched.
+app.delete('/api/schools/:id', pinLimit, wrap(async (req, res) => {
+  const b = req.body || {};
+  const school = await loadSchool(req.params.id);
+  const isAdmin = !!ADMIN_PIN && safeEq(req.get('x-admin-pin'), ADMIN_PIN);
+  if (!isAdmin && !Pins.verifyPin(b.pin, school.pin_salt, school.pin_hash)) throw httpErr(401, 'That school PIN is not right.');
+  if (cleanName(b.confirmName).toLowerCase() !== school.name_key) throw httpErr(400, `Type the school name exactly (${school.name}) to confirm.`);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const released = await client.query('UPDATE teams SET school_id = NULL WHERE school_id = $1', [school.id]);
+    await client.query('DELETE FROM schools WHERE id = $1', [school.id]);
+    await client.query('COMMIT');
+    console.log(`[schools] deleted ${school.name}; released ${released.rowCount} team(s)${isAdmin ? ' (by admin)' : ''}`);
+    res.json({ ok: true, releasedTeams: released.rowCount });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}));
+
 /* ---- create game ---- */
 app.post('/api/games', rateLimit('create', 30, 3600 * 1000), wrap(async (req, res) => {
   const b = req.body || {};
@@ -705,4 +763,4 @@ if (require.main === module) {
     .catch((err) => { console.error('Failed to start:', err); process.exit(1); });
 }
 
-module.exports = { app, pool, init, parseRoster };
+module.exports = { app, pool, init, parseRoster, resetRateLimits: () => buckets.clear() };

@@ -14,7 +14,7 @@ if (!URL_) {
   process.env.DATABASE_URL = URL_;
   process.env.ADMIN_PIN = '4321';
   process.env.STATS_API_KEY = 'test-stats-key';
-  const { app, pool, init } = require('../server');
+  const { app, pool, init, resetRateLimits } = require('../server');
 
   let server, base, game, keeper;
   const j = async (method, path, body, headers = {}) => {
@@ -433,6 +433,7 @@ if (!URL_) {
   });
 
   test('school PINs: change and reset', async () => {
+    resetRateLimits();
     const id = (await j('POST', '/api/schools', { name: 'Pearl High', pin: 'first-pin-1' })).data.school.id;
     const change = (body, headers) => j('POST', `/api/schools/${id}/pin`, body, headers);
     assert.equal((await change({ pin: 'nope-nope', newPin: 'second-pin-2' })).status, 401);
@@ -447,5 +448,53 @@ if (!URL_) {
     assert.equal(g.status, 201);
     const row = await pool.query('SELECT pin_salt, pin_hash FROM schools WHERE id = $1', [id]);
     assert.equal(JSON.stringify(row.rows[0]).includes('reset-by-admin'), false);     // only a salted hash is stored
+  });
+
+  test('school PINs: remove teams and delete a school without touching game history', async () => {
+    resetRateLimits();   // this test makes many deliberate wrong-PIN attempts; the real limit is 20 per hour per IP
+    const id = (await j('POST', '/api/schools', { name: 'Brandon High', pin: 'Bulldogs-9' })).data.school.id;
+    const add = (names) => j('POST', `/api/schools/${id}/teams`, { pin: 'Bulldogs-9', teams: names.map((name) => ({ name, sport: 'basketball' })) });
+    assert.equal((await add(['Brandon Bulldogs', 'Brandon JV'])).status, 200);
+    const G = (home, pin) => j('POST', '/api/games', { sport: 'basketball', pin, home: { name: home, roster: '1 A' }, away: { name: 'Remote Opponent', roster: '2 B' } });
+    const played = await G('Brandon Bulldogs', 'Bulldogs-9');
+    assert.equal(played.status, 201);
+
+    // removing teams: needs the PIN, only the school's own teams, all-or-nothing
+    const rm = (teams, body = {}, headers) => j('DELETE', `/api/schools/${id}/teams`, { teams, ...body }, headers);
+    const jv = [{ name: 'Brandon JV', sport: 'basketball' }];
+    assert.equal((await rm(jv, { pin: 'wrong-pin' })).status, 401);
+    assert.equal((await rm([])).status, 401);
+    assert.equal((await rm([], { pin: 'Bulldogs-9' })).status, 400);
+    assert.equal((await rm([{ name: 'Murrah Mustangs', sport: 'basketball' }], { pin: 'Bulldogs-9' })).status, 400);                // someone else's team
+    assert.equal((await rm([...jv, { name: 'Murrah Mustangs', sport: 'basketball' }], { pin: 'Bulldogs-9' })).status, 400);        // one bad name cancels the lot
+    assert.equal((await G('Brandon JV', '')).status, 401);                                                                         // so JV is still guarded
+    const done = await rm(jv, { pin: 'Bulldogs-9' });
+    assert.equal(done.status, 200);
+    assert.equal(done.data.removed[0].name, 'Brandon JV');
+    assert.equal((await G('Brandon JV', '')).status, 201);                                                                         // released: open again
+    assert.equal((await G('Brandon Bulldogs', '')).status, 401);                                                                   // the other team is still guarded
+    const shown = (await j('GET', '/api/schools')).data.schools.find((x) => x.id === id);
+    assert.deepEqual(shown.teams.map((x) => x.name), ['Brandon Bulldogs']);
+
+    // deleting the school: PIN and typed name both required; teams are released, history is kept
+    const del = (body, headers) => j('DELETE', `/api/schools/${id}`, body, headers);
+    assert.equal((await del({ pin: 'wrong-pin', confirmName: 'Brandon High' })).status, 401);
+    assert.equal((await del({ pin: 'Bulldogs-9' })).status, 400);
+    assert.equal((await del({ pin: 'Bulldogs-9', confirmName: 'Brandon' })).status, 400);
+    assert.equal((await j('GET', '/api/schools')).data.schools.some((x) => x.id === id), true);
+    const gone = await del({ pin: 'Bulldogs-9', confirmName: ' brandon  HIGH ' });
+    assert.equal(gone.status, 200);
+    assert.equal(gone.data.releasedTeams, 1);
+    assert.equal((await j('GET', '/api/schools')).data.schools.some((x) => x.id === id), false);
+    assert.equal((await del({ pin: 'Bulldogs-9', confirmName: 'Brandon High' })).status, 404);
+    assert.equal((await G('Brandon Bulldogs', '')).status, 201);                                                                   // open now
+    assert.equal((await j('GET', `/api/games/${played.data.code}`)).status, 200);                                                 // the game it played is untouched
+    assert.equal((await j('POST', '/api/schools', { name: 'Brandon High', pin: 'brand-new-pin' })).status, 201);                   // the name can be registered again
+
+    // the operator can clean up a school whose PIN was lost (still must confirm the name)
+    const lost = (await j('POST', '/api/schools', { name: 'Lost Pin Academy', pin: 'forgotten-1' })).data.school.id;
+    assert.equal((await j('DELETE', `/api/schools/${lost}`, { confirmName: 'Lost Pin Academy' })).status, 401);
+    assert.equal((await j('DELETE', `/api/schools/${lost}`, { confirmName: 'nope' }, ADMIN)).status, 400);
+    assert.equal((await j('DELETE', `/api/schools/${lost}`, { confirmName: 'Lost Pin Academy' }, ADMIN)).status, 200);
   });
 }
