@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e1618">
+<title>Live game | Sideline Stats</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">Sideline Stats</a>
+  <nav><a id="leaders-link" href="/leaders">Leaders</a><a id="rules-link" href="/rules">How stats are counted</a></nav>
+</header>
+<main class="wrap">
+  <div id="app" aria-live="polite"><p class="muted">Loading game…</p></div>
+</main>
+
+<dialog id="flag-dialog" aria-labelledby="flag-title">
+  <form method="dialog" id="flag-form">
+    <h2 id="flag-title">Report a problem</h2>
+    <p class="muted small">Tell the scorer and the athletic department what looks wrong. Your note is shown on this page until it is resolved.</p>
+    <div class="field"><label for="flag-name">Your name (optional)</label><input id="flag-name" type="text" maxlength="60"></div>
+    <div class="field"><label for="flag-play">Which play? (optional)</label><select id="flag-play"></select></div>
+    <div class="field"><label for="flag-msg">What looks wrong?</label><textarea id="flag-msg" maxlength="600" style="min-height:100px; font-family: var(--body); font-size: 1rem;"></textarea></div>
+    <div id="flag-error" class="notice bad hidden" role="alert"></div>
+    <div class="row"><button class="btn primary" type="submit" value="send">Send report</button><button class="btn quiet" type="button" id="flag-cancel">Cancel</button></div>
+  </form>
+</dialog>
+
+<script src="/shared/sports.js"></script>
+<script src="/shared/engine.js"></script>
+<script src="/js/common.js"></script>
+<script src="/js/live.js"></script>
+</body>
+</html>

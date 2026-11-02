@@ -1,0 +1,19 @@
+{
+  "name": "sideline-stats",
+  "version": "0.1.0",
+  "description": "Fair, auditable, multi-sport live stat tracker for high school and college programs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "express": "^4.22.3",
+    "pg": "^8.23.1"
+  }
+}

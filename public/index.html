@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e1618">
+<title>Sideline Stats</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">Sideline Stats</a>
+  <nav><a href="/leaders/basketball">Leaders</a><a href="/rules">How stats are counted</a></nav>
+</header>
+<main class="wrap">
+  <h1>Live stats for every game, kept honestly.</h1>
+  <p class="muted">One person taps plays on a phone. Everyone else watches the box score update. Every number traces back to a logged play, and every correction stays visible.</p>
+
+  <section class="panel" style="margin: 20px 0;" aria-labelledby="find">
+    <h2 id="find">Open a game</h2>
+    <form id="find-form" class="row">
+      <label class="sr" for="code">Game code</label>
+      <input id="code" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Game code, like K7M2QX" style="max-width: 280px;">
+      <button class="btn primary" type="submit">Open game</button>
+    </form>
+  </section>
+
+  <section aria-labelledby="recent">
+    <h2 id="recent">Recent games</h2>
+    <ul class="gamelist" id="games"><li class="muted" style="padding:12px 4px;">Loading…</li></ul>
+  </section>
+
+  <section id="create-section" style="margin-top: 36px;" aria-labelledby="create">
+    <h2 id="create">Start a game</h2>
+    <form id="create-form" novalidate>
+      <div class="cols two">
+        <div class="field">
+          <label for="sport">Sport</label>
+          <select id="sport"></select>
+        </div>
+        <div class="field">
+          <label for="date">Date</label>
+          <input id="date" type="date">
+        </div>
+      </div>
+      <div class="cols two">
+        <div class="field">
+          <label for="format">Rules</label>
+          <select id="format"></select>
+          <p class="hint">Sets the number and length of periods, innings or sets, and the clock.</p>
+        </div>
+        <div class="field">
+          <label for="level">Level (optional)</label>
+          <input id="level" type="text" maxlength="30" placeholder="Varsity, JV, Freshman, College">
+          <p class="hint">Leaderboards are kept per level, so JV and varsity never mix.</p>
+        </div>
+      </div>
+      <div class="cols two">
+        <fieldset class="team">
+          <legend>Home team</legend>
+          <div class="field"><label for="hname">Team name</label><input id="hname" type="text" maxlength="60" required></div>
+          <div class="field"><label for="hroster">Roster</label><textarea id="hroster" spellcheck="false" placeholder="23 Marcus Johnson&#10;4 Devin Lee&#10;10 Cruz"></textarea>
+          <p class="hint">One player per line: jersey number, then name.</p></div>
+        </fieldset>
+        <fieldset class="team away">
+          <legend>Away team</legend>
+          <div class="field"><label for="aname">Team name</label><input id="aname" type="text" maxlength="60" required></div>
+          <div class="field"><label for="aroster">Roster</label><textarea id="aroster" spellcheck="false" placeholder="3 Ray&#10;15 Moss"></textarea>
+          <p class="hint">Both teams are tracked with the same rules.</p></div>
+        </fieldset>
+      </div>
+      <div class="field hidden" id="pin-field">
+        <label for="pin">Access PIN</label>
+        <input id="pin" type="password" autocomplete="off">
+        <p class="hint">Ask your athletic department for the PIN to start games.</p>
+      </div>
+      <div id="create-error" class="notice bad hidden" role="alert"></div>
+      <div class="row">
+        <button class="btn primary" type="submit" id="create-btn">Start game</button>
+        <button class="btn quiet" type="button" id="sample">Fill sample rosters</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="done" class="panel hidden" aria-live="polite" style="margin-top: 24px;">
+    <h2>Game ready</h2>
+    <div class="notice warn"><b>Keep the stat-keeper link private.</b> Anyone with it can enter stats. Share only the public link with fans and parents.</div>
+    <div class="field"><label>Stat-keeper link (for the scorer)</label>
+      <div class="row"><input id="k-link" type="text" readonly><button class="btn" data-copy="k-link">Copy</button></div></div>
+    <div class="field"><label>Public link (for everyone else)</label>
+      <div class="row"><input id="p-link" type="text" readonly><button class="btn" data-copy="p-link">Copy</button></div></div>
+    <a class="btn primary" id="open-keeper" href="#">Open stat keeper</a>
+  </section>
+</main>
+<script src="/shared/sports.js"></script>
+<script src="/shared/engine.js"></script>
+<script src="/js/common.js"></script>
+<script src="/js/index.js"></script>
+</body>
+</html>
